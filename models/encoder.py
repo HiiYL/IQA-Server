@@ -149,7 +149,7 @@ class EncoderSkipThought(nn.Module):
         """Set the hyper-parameters and build the layers."""
         super(EncoderSkipThought, self).__init__()
 
-        dir_st = '../AttentiveVQA/skipthought/data/skip-thoughts'
+        dir_st = 'skipthought/data/skip-thoughts'
         self.buskip = BayesianUniSkip(dir_st, vocab.word2idx.keys(), dropout=.25)
 
     def forward(self, inputs, lengths):
