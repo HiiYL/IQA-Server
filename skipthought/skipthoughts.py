@@ -414,7 +414,7 @@ class BiSkip(AbstractBiSkip):
 
 
 if __name__ == '__main__':
-    dir_st = '/home/cadene/data/skip-thoughts'
+    dir_st = '/Users/Hii/Projects/IQAServer/skipthought/data/skip-thoughts'
     vocab = ['robots', 'are', 'very', 'cool', '<eos>', 'BiDiBu']
     #model = BayesianUniSkip(dir_st, vocab)
     model = BiSkip(dir_st, vocab)

@@ -42,8 +42,8 @@ netR = EncoderSkipThought(question_vocab)
 netM = MultimodalAttentionRNN(ans_vocab)
 
 
-netR.load_state_dict(torch.load("data/netR.pkl"))
-netM.load_state_dict(torch.load("data/netM.pkl"))
+netR.load_state_dict(torch.load("data/netR.pkl", map_location=lambda storage, loc: storage))
+netM.load_state_dict(torch.load("data/netM.pkl", map_location=lambda storage, loc: storage))
 
 if torch.cuda.is_available():
     encoder = encoder.cuda()
