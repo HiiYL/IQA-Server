@@ -21,40 +21,85 @@ cudnn.benchmark = True
 
 import spacy
 
-nlp = spacy.load('en')
-transform = transforms.Compose([
-    transforms.Scale((448,448)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
 
-with open("data/vocabs.pkl", 'rb') as f:
-    vocabs = pickle.load(f)
+class VQAModel():
+    def __init__(self):
+        self.nlp = spacy.load('en')
+        self.transform = transforms.Compose([
+            transforms.Scale((448,448)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            ])
 
-question_vocab = vocabs["question"]
-ans_vocab      = vocabs["answer"]
-ans_type_vocab = vocabs["ans_type"]
+        self.aliases = {"colour": "color"}
 
-# Build the models
-#encoder = EncoderCNN(512,models.inception_v3(pretrained=True))
-encoder =  nn.Sequential(*list(models.resnet152(pretrained=True).children())[:-2]) 
-netR = EncoderSkipThought(question_vocab)
-netM = MultimodalAttentionRNN(ans_vocab)
+        with open("data/vocabs.pkl", 'rb') as f:
+            vocabs = pickle.load(f)
+
+        self.question_vocab = vocabs["question"]
+        self.ans_vocab      = vocabs["answer"]
+        self.ans_type_vocab = vocabs["ans_type"]
+
+        # Build the models
+        #encoder = EncoderCNN(512,models.inception_v3(pretrained=True))
+        self.encoder =  nn.Sequential(*list(models.resnet152(pretrained=True).children())[:-2]).eval()
+
+        self.netR    = EncoderSkipThought(self.question_vocab).eval()
+        self.netR.load_state_dict(torch.load("data/netR.pkl", map_location=lambda storage, loc: storage))
+
+        self.netM    = MultimodalAttentionRNN(self.ans_vocab).eval()
+        self.netM.load_state_dict(torch.load("data/netM.pkl", map_location=lambda storage, loc: storage))
+
+        if torch.cuda.is_available():
+            self.encoder = self.encoder.cuda()
+            self.netM    = self.netM.cuda()
+            self.netR    = self.netR.cuda()
 
 
-netR.load_state_dict(torch.load("data/netR.pkl", map_location=lambda storage, loc: storage))
-netM.load_state_dict(torch.load("data/netM.pkl", map_location=lambda storage, loc: storage))
+    def sentence_to_idx(self, query):
+        tokens = [w.text for w in self.nlp(query)]
+        print(tokens)
 
-if torch.cuda.is_available():
-    encoder = encoder.cuda()
-    netM    = netM.cuda()
-    netR    = netR.cuda()
+        q_idx = []
+        for token in tokens:
+            if token in self.aliases.keys():
+                token = self.aliases[token]
+            if token in self.question_vocab.word2idx.keys():
+                q_idx.append(self.question_vocab(token))
 
+        return q_idx
 
-netM.eval()
-netR.eval()
-encoder.eval()
+    def preprocess_query(self, query):
+        query_idx    = self.sentence_to_idx(query)
+        query_tensor = [torch.Tensor(query_idx)]
 
+        # Merge captions (from tuple of 1D tensor to 2D tensor).
+        lengths      = [len(cap) for cap in query_tensor]
+        query_padded = torch.zeros(len(query_tensor), max(lengths)).long()
+        for i, cap in enumerate(query_tensor):
+            end = lengths[i]
+            query_padded[i, :end] = cap[:end]
+
+        query_padded = Variable(query_padded, volatile=True)
+
+        return query_padded, lengths
+
+    def evaluate(self, image, query):
+        image             = Variable(self.transform(image).unsqueeze(0), volatile=True)
+        question, lengths = self.preprocess_query(query)
+
+        if torch.cuda.is_available():
+            image   = image.cuda()
+            question = question.cuda()
+
+        visual_features = self.encoder(image)
+        text_features, text_all_output   = self.netR(question, lengths)
+        out = self.netM(visual_features, text_features, text_all_output, lengths)
+
+        predict = torch.max(out,1)[1].data.cpu().numpy()[0][0]
+        answer = self.ans_vocab.idx2word[predict]
+
+        return answer
 
 
 UPLOAD_FOLDER = 'images/'
@@ -63,11 +108,13 @@ ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'])
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+vqa_model = VQAModel()
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-word_lookup = {"colour": "color"}
+
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     if request.method == 'POST':
@@ -83,42 +130,14 @@ def upload_file():
         if file.filename == '':
             flash('No selected file')
             return redirect(request.url)
+
+
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             image = Image.open(file)
-            image = Variable(transform(image).unsqueeze(0), volatile=True)
 
             query  = request.form.get('question').lower()
-            tokens = [w.text for w in nlp(query)]
-            print(tokens)
-            q_idx = []
-            for item in tokens:
-                if item in question_vocab.word2idx.keys():
-                    q_idx.append(question_vocab(item))
-                else:
-                    if item in word_lookup.keys():
-                        q_idx.append(question_vocab(word_lookup[item]))
-
-            captions = [torch.Tensor(q_idx)]
-
-            # Merge captions (from tuple of 1D tensor to 2D tensor).
-            lengths = [len(cap) for cap in captions]
-            question = torch.zeros(len(captions), max(lengths)).long()
-            for i, cap in enumerate(captions):
-                end = lengths[i]
-                question[i, :end] = cap[:end]
-
-            question = Variable(question, volatile=True)
-            if torch.cuda.is_available():
-                image   = image.cuda()
-                question = question.cuda()
-
-            visual_features = encoder(image)
-            text_features, text_all_output   = netR(question, lengths)
-            out = netM(visual_features, text_features, text_all_output, lengths)
-
-            predict = torch.max(out,1)[1].data.cpu().numpy()[0][0]
-            answer = ans_vocab.idx2word[predict]
+            answer = vqa_model.evaluate(image, query)
 
             return jsonify({"status":200, "response": answer})
     return '''
@@ -131,6 +150,8 @@ def upload_file():
          <input type=submit value=Upload>
     </form>
     '''
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0")
     #app.debug = True
