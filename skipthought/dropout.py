@@ -1,16 +1,18 @@
-import torch
-import numpy as np
-from torch import nn
-from torch.autograd import Variable
 from itertools import repeat
 
-class EmbeddingDropout():
+import numpy as np
+import torch
+from torch import nn
+from torch.autograd import Variable
 
+
+class EmbeddingDropout:
     def __init__(self, p=0.5):
         super(EmbeddingDropout, self).__init__()
         if p < 0 or p > 1:
-            raise ValueError("dropout probability has to be between 0 and 1, "
-                             "but got {}".format(p))
+            raise ValueError(
+                "dropout probability has to be between 0 and 1, " "but got {}".format(p)
+            )
         self.p = p
         self.training = True
 
@@ -39,12 +41,12 @@ class EmbeddingDropout():
 
 
 class SequentialDropout(nn.Module):
-
     def __init__(self, p=0.5):
         super(SequentialDropout, self).__init__()
         if p < 0 or p > 1:
-            raise ValueError("dropout probability has to be between 0 and 1, "
-                             "but got {}".format(p))
+            raise ValueError(
+                "dropout probability has to be between 0 and 1, " "but got {}".format(p)
+            )
         self.p = p
         self.restart = True
 
@@ -75,12 +77,13 @@ class SequentialDropout(nn.Module):
             return grad_output
 
     def __repr__(self):
-        return type(self).__name__ + '({:.4f})'.format(self.p)
+        return type(self).__name__ + "({:.4f})".format(self.p)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
 
     dp = SequentialDropout(p=0.5)
-    input = Variable(torch.ones(1,10), volatile=True)
+    input = Variable(torch.ones(1, 10), volatile=True)
 
     dist_total = torch.zeros(1)
     output_last = dp(input)
@@ -88,9 +91,9 @@ if __name__ == '__main__':
         output_new = dp(input)
         dist_total += torch.dist(output_new, output_last).data
         output_last = output_new
-    
+
     if not torch.equal(dist_total, torch.zeros(1)):
-        print('Error')
+        print("Error")
         print(dist_total)
 
     dp.end_of_sequence()
@@ -101,11 +104,11 @@ if __name__ == '__main__':
         dp.end_of_sequence()
 
     if torch.equal(dist_total, torch.zeros(1)):
-        print('Error')
+        print("Error")
 
     ####
 
     dp = EmbeddingDropout(p=0.15)
-    input = torch.Tensor([[1,2,3,0,0],[5,3,2,2,0]]).long()
+    input = torch.Tensor([[1, 2, 3, 0, 0], [5, 3, 2, 2, 0]]).long()
     print(input)
     print(dp.forward(input))

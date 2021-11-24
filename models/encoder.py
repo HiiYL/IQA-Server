@@ -1,18 +1,20 @@
-import torchvision.models as models
+import math
+import os
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from torch.autograd import Variable
-import math
-import torch.utils.model_zoo as model_zoo
-from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence,PackedSequence
-import torchvision.models as models
-import os
 import torch.nn.functional as F
+import torch.utils.model_zoo as model_zoo
+import torchvision.models as models
+from torch.autograd import Variable
 from torch.nn.init import kaiming_uniform
+from torch.nn.utils.rnn import (PackedSequence, pack_padded_sequence,
+                                pad_packed_sequence)
+
 
 class EncoderCNN(nn.Module):
-    def __init__(self,inception, requires_grad=False):
+    def __init__(self, inception, requires_grad=False):
         """Load the pretrained ResNet-152 and replace top fc layer."""
         super(EncoderCNN, self).__init__()
         self.aux_logits = False
@@ -81,9 +83,10 @@ class EncoderCNN(nn.Module):
         # 8 x 8 x 2048
         x = self.Mixed_7c(x)
         # 8 x 8 x 2048
-        #x = F.dropout(x, training=self.training)
+        # x = F.dropout(x, training=self.training)
 
         return x
+
 
 # class EncoderFC(nn.Module):
 #     def __init__(self, global_only=False):
@@ -126,15 +129,15 @@ class EncoderCNN(nn.Module):
 #         self.embed = nn.Embedding(vocab_size, embed_size)
 #         self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
 #         self.init_weights()
-    
+
 #     def init_weights(self):
 #         """Initialize weights."""
 #         self.embed.weight.data.uniform_(-0.1, 0.1)
-        
+
 #     def forward(self, captions, lengths):
 #         """Decode image feature vectors and generates captions."""
 #         embeddings = self.embed(captions)
-#         packed = pack_padded_sequence(embeddings, lengths, batch_first=True) 
+#         packed = pack_padded_sequence(embeddings, lengths, batch_first=True)
 #         hiddens, _ = self.lstm(packed)
 
 #         hiddens_padded, _ = pad_packed_sequence(hiddens, batch_first=True)
@@ -143,14 +146,16 @@ class EncoderCNN(nn.Module):
 #         return last_hiddens #hiddens_padded
 
 
-from skipthought.skipthoughts import UniSkip, BiSkip,BayesianUniSkip
+from skipthought.skipthoughts import BayesianUniSkip, BiSkip, UniSkip
+
+
 class EncoderSkipThought(nn.Module):
     def __init__(self, vocab):
         """Set the hyper-parameters and build the layers."""
         super(EncoderSkipThought, self).__init__()
 
-        dir_st = 'skipthought/data/skip-thoughts'
-        self.buskip = BayesianUniSkip(dir_st, vocab.word2idx.keys(), dropout=.25)
+        dir_st = "skipthought/data/skip-thoughts"
+        self.buskip = BayesianUniSkip(dir_st, vocab.word2idx.keys(), dropout=0.25)
 
     def forward(self, inputs, lengths):
         return self.buskip(inputs, lengths=lengths)
